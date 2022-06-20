@@ -120,6 +120,7 @@ linked sections:
 | --                      | --                    | --
 | arrange                 | string                | For "layout" style, display child widgets as "rows" or "columns"
 | bodypart                | string                | For "bp_*" variables, body part id like "leg_r" or "torso"
+| separator               | string                | The string used to separate the label from the widget data. Children will inherit if this is not defined. Mandatory if style is "sidebar".
 | [colors](#colors)       | list of strings       | Color names in a spectrum across variable range
 | [direction](#direction) | string                | Cardinal compass direction like "N" or "SE"
 | [fill](#fill)           | string                | For [graph style](#graph-style), fill using ike "bucket" or "pool"
@@ -227,6 +228,48 @@ The above might yield:
 ```
 Sound: 8  Focus: 105  Move: 120
 Str: 8  Dex: 9  Int: 7  Per: 11
+```
+
+These layout widgets can be nested to produce web-style layouts:
+
+```json
+[
+  {
+    "id": "overmap_5x5",
+    "type": "widget",
+    "var": "overmap_text",
+    "style": "text",
+    "width": 5,
+    "height": 5,
+    "flags": [ "W_LABEL_NONE" ]
+  },
+  {
+    "id": "location_text_layout",
+    "type": "widget",
+    "style": "layout",
+    "arrange": "rows",
+    "widgets": [ "lighting_desc", "moon_phase_desc", "wind_desc", "env_temp_desc" ]
+  },
+  {
+    "id": "layout_location_columns",
+    "type": "widget",
+    "style": "layout",
+    "arrange": "columns",
+    "label": "Location",
+    "widgets": [ "overmap_5x5", "location_text_layout" ],
+    "flags": [ "W_LABEL_NONE" ]
+  }
+]
+```
+
+The above would produce something like:
+
+```
+FFF..  Lighting:    bright
+FF...  Moon:        Waxing crescent
+FF..P  Wind:        Light Breeze =>
+F...|  Temperature: 16C
+F...|
 ```
 
 Where do all these numeric widgets and their values come from? These are variable widgets, discussed
@@ -588,7 +631,7 @@ red, given in a "colors" list:
 }
 ```
 
-Color names may be any of those described in [COLORS.md](COLORS.md). You can also see the available
+Color names may be any of those described in [COLOR.md](COLOR.md). You can also see the available
 colors in-game from the "Settings" menu, under "Colors".
 
 Graphs can be colorized in the same way. For example, the classic stamina graph is a 5-character
@@ -608,7 +651,7 @@ yellow, light red, and red. Such coloration could be represented with "colors" l
 }
 ```
 
-The number of colors you use is arbitrary; the [range of possible values](#variable-range) will be
+The number of colors you use is arbitrary; the [range of possible values](#variable-ranges) will be
 mapped as closely as possible to the spectrum of colors, with one exception - variables with a
 "normal" value or range always use white (`c_white`) when the value is within normal.
 
@@ -624,17 +667,18 @@ Widgets can use flags to specify special behaviors:
   "style": "text",
   "label": "My Widget",
   "var": "my_widget_var",
-  "flags": [ "W_LABEL_NONE", "W_DISABLED" ]
+  "flags": [ "W_LABEL_NONE", "W_DISABLED_BY_DEFAULT" ]
 }
 ```
 
 Here are some flags that can be included:
 
-| Flag id            | Description
-|---                 |---
-| `W_LABEL_NONE`     | Prevents the widget's label from being displayed in the sidebar
-| `W_DISABLED`       | Makes this widget disabled by default (only applies to top-level widgets/layouts)
-| `W_DYNAMIC_HEIGHT` | Allows certain multi-line widgets to dynamically adjust their height
+| Flag id                 | Description
+|---                      |---
+| `W_LABEL_NONE`          | Prevents the widget's label from being displayed in the sidebar
+| `W_DISABLED_BY_DEFAULT` | Makes this widget disabled by default (only applies to top-level widgets/layouts)
+| `W_DISABLED_WHEN_EMPTY` | Automatically hides this widget when the widget's text is empty
+| `W_DYNAMIC_HEIGHT`      | Allows certain multi-line widgets to dynamically adjust their height
 
 
 # Clauses and conditions
@@ -817,14 +861,11 @@ Some vars refer to text descriptors. These must use style "text". Examples:
 | var                     | description
 |--                       |--
 | `activity_text`         | Activity level - "None", "Light". "Moderate", "Brisk", "Active", "Extreme"
-| `body_temp_text`        | Felt body temperature "Comfortable", "Chilly", "Warm" etc.
 | `bp_outer_armor_text`   | Item name and damage bars of armor/clothing worn on the given "bodypart"
 | `compass_legend_text`   | (_multiline_) A list of creatures visible by the player, corresponding to compass symbols
 | `compass_text`          | A compass direction (ex: NE), displaying visible creatures in that direction
 | `date_text`             | Current day within season, like "Summer, day 15"
 | `env_temp_text`         | Environment temperature, if thermometer is available
-| `fatigue_text`          | Fatigue level - "Tired", "Dead Tired", "Exhausted"
-| `health_text`           | Hidden health - "OK", "Good", "Very good", "Bad", "Very bad", etc.
 | `mood_text`             | Avatar mood represented as an emoticon face
 | `move_mode_letter`      | Movement mode - "W": walking, "R": running, "C": crouching, "P": prone
 | `move_mode_text`        | Movement mode - "walking", "running", "crouching", "prone"

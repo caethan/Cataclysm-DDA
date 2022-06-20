@@ -273,9 +273,11 @@ class game
          */
         void vertical_move( int z, bool force, bool peeking = false );
         void start_hauling( const tripoint &pos );
-        /** Returns the other end of the stairs (if any). May query, affect u etc.  */
+        /** Returns the other end of the stairs (if any). May query, affect u etc.
+        * @param pos Disable queries and msgs if not the same position as player.
+        */
         cata::optional<tripoint> find_or_make_stairs( map &mp, int z_after, bool &rope_ladder,
-                bool peeking );
+                bool peeking, const tripoint &pos );
         /** Actual z-level movement part of vertical_move. Doesn't include stair finding, traps etc.
          *  Returns true if the z-level changed.
          */
@@ -484,7 +486,7 @@ class game
         /** Asks if the player wants to cancel their activity and if so cancels it. Additionally checks
          *  if the player wants to ignore further distractions. */
         bool cancel_activity_or_ignore_query( distraction_type type, const std::string &text );
-        bool portal_storm_query( const distraction_type type, const std::string &text );
+        bool portal_storm_query( distraction_type type, const std::string &text );
         /** Handles players exiting from moving vehicles. */
         void moving_vehicle_dismount( const tripoint &dest_loc );
 
@@ -497,6 +499,8 @@ class game
         int assign_mission_id();
         /** Find the npc with the given ID. Returns NULL if the npc could not be found. Searches all loaded overmaps. */
         npc *find_npc( character_id id );
+        /** Find the npc with the given unique ID. Returns NULL if the npc could not be found. Searches all loaded overmaps. */
+        npc *find_npc_by_unique_id( std::string unique_id );
         /** Makes any nearby NPCs on the overmap active. */
         void load_npcs();
     private:
@@ -578,8 +582,22 @@ class game
 
         // Look at nearby terrain ';', or select zone points
         cata::optional<tripoint> look_around();
+        /**
+        * @brief
+        *
+        * @param show_window display the info window that holds the tile information in the position.
+        * @param center used to calculate the u.view_offset, could center the screen to the position it represents
+        * @param start_point  the start point of the targeting zone, also the initial local position of the cursor
+        * @param has_first_point should be true if the first point has been selected when editing the zone
+        * @param select_zone true if the zone is being edited
+        * @param peeking determines if the player is peeking
+        * @param is_moving_zone true if the zone is being moved, false by default
+        * @param end_point the end point of the targeting zone, only used if is_moving_zone is true, default is tripoint_zero
+        * @return look_around_result
+        */
         look_around_result look_around( bool show_window, tripoint &center,
-                                        const tripoint &start_point, bool has_first_point, bool select_zone, bool peeking );
+                                        const tripoint &start_point, bool has_first_point, bool select_zone, bool peeking,
+                                        bool is_moving_zone = false, const tripoint &end_point = tripoint_zero );
         look_around_result look_around( look_around_params );
 
         // Shared method to print "look around" info
@@ -1004,7 +1022,12 @@ class game
         memorial_logger &memorial();
 
         global_variables global_variables_instance;
+        std::unordered_map<std::string, point_abs_om> unique_npcs;
     public:
+        void update_unique_npc_location( std::string id, point_abs_om loc );
+        point_abs_om get_unique_npc_location( std::string id );
+        bool unique_npc_exists( std::string id );
+        void unique_npc_despawn( std::string id );
         std::vector<effect_on_condition_id> inactive_global_effect_on_condition_vector;
         std::priority_queue<queued_eoc, std::vector<queued_eoc>, eoc_compare>
         queued_global_effect_on_conditions;

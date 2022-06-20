@@ -9,9 +9,13 @@
 #include "output.h"
 #include "overmapbuffer.h"
 
-const static flag_id json_flag_W_DISABLED( "W_DISABLED" );
+const static flag_id json_flag_W_DISABLED_BY_DEFAULT( "W_DISABLED_BY_DEFAULT" );
+const static flag_id json_flag_W_DISABLED_WHEN_EMPTY( "W_DISABLED_WHEN_EMPTY" );
 const static flag_id json_flag_W_DYNAMIC_HEIGHT( "W_DYNAMIC_HEIGHT" );
 const static flag_id json_flag_W_LABEL_NONE( "W_LABEL_NONE" );
+
+// Default label separator for widgets.
+const static std::string default_separator = "DEFAULT";
 
 // Use generic factory wrappers for widgets to use standardized JSON loading methods
 namespace
@@ -116,18 +120,14 @@ std::string enum_to_string<widget_var>( widget_var data )
         // Description functions
         case widget_var::activity_text:
             return "activity_text";
-        case widget_var::body_temp_text:
-            return "body_temp_text";
+        case widget_var::body_graph:
+            return "body_graph";
         case widget_var::bp_armor_outer_text:
             return "bp_armor_outer_text";
         case widget_var::date_text:
             return "date_text";
         case widget_var::env_temp_text:
             return "env_temp_text";
-        case widget_var::fatigue_text:
-            return "fatigue_text";
-        case widget_var::health_text:
-            return "health_text";
         case widget_var::mood_text:
             return "mood_text";
         case widget_var::move_count_mode_text:
@@ -358,6 +358,13 @@ void widget::load( const JsonObject &jo, const std::string & )
     optional( jo, was_loaded, "label_align", _label_align, widget_alignment::LEFT );
     optional( jo, was_loaded, "flags", _flags );
 
+    if( _style == "sidebar" ) {
+        mandatory( jo, was_loaded, "separator", _separator );
+        explicit_separator = true;
+    } else {
+        optional( jo, was_loaded, "separator", _separator, default_separator );
+        explicit_separator = ( _separator != default_separator );
+    }
     _height = _height_max;
     _label_width = _label.empty() ? 0 : utf8_width( _label.translated() );
 
@@ -444,9 +451,42 @@ int widget::finalize_label_width_recursive( const widget_id &id )
     return w->_label_width;
 }
 
+void widget::finalize_label_separator_recursive( const widget_id &id,
+        const std::string &label_separator )
+{
+    widget *w = nullptr;
+    // Get the original widget from the widget factory.
+    for( const widget &wgt : widget::get_all() ) {
+        if( wgt.getId() == id ) {
+            w = const_cast<widget *>( &wgt );
+            break;
+        }
+    }
+    if( w == nullptr ) {
+        return;
+    } else if( w->_widgets.empty() ) {
+        if( !w->explicit_separator ) {
+            w->_separator = label_separator;
+            return;
+        } else {
+            return;
+        }
+    }
+    // If we get here, we have a layout that contains nested widgets.
+    for( const widget_id &wid : w->_widgets ) {
+        if( !w->explicit_separator ) {
+            w->_separator = label_separator;
+        }
+        widget::finalize_label_separator_recursive( wid, w->_separator );
+    }
+}
+
 void widget::finalize()
 {
     for( const widget &wgt : widget::get_all() ) {
+        if( wgt.explicit_separator ) {
+            widget::finalize_label_separator_recursive( wgt.getId(), wgt._separator );
+        }
         widget::finalize_label_width_recursive( wgt.getId() );
     }
 }
@@ -647,7 +687,7 @@ int widget::get_var_value( const avatar &ava ) const
             value = ava.get_fatigue();
             break;
         case widget_var::health:
-            value = ava.get_healthy();
+            value = ava.get_lifestyle();
             break;
         case widget_var::weariness_level:
             value = ava.weariness_level();
@@ -734,7 +774,7 @@ int widget::custom_draw_multiline( const std::string &widget_string, const catac
 
 // Drawing function, provided as a callback to the window_panel constructor.
 // Handles rendering a widget's content into a window panel.
-static void custom_draw_func( const draw_args &args )
+static int custom_draw_func( const draw_args &args )
 {
     const avatar &u = args._ava;
     const catacurses::window &w = args._win;
@@ -745,36 +785,62 @@ static void custom_draw_func( const draw_args &args )
     // Leave 1 character space for margin on left and right
     const int margin = 1;
     const int widt = width - 2 * margin;
+    // Whether to subtract height lines from the drawn panel space
+    const bool disable_empty = wgt->has_flag( json_flag_W_DISABLED_WHEN_EMPTY );
 
     // Quit if there is nothing to draw or no space to draw it
     if( wgt == nullptr || width <= 0 ) {
-        return;
+        return 0;
     }
+
+    int height_diff = 0;
 
     werase( w );
     if( wgt->_style == "sidebar" ) {
     } else if( wgt->_style == "layout" ) {
         if( wgt->_arrange == "rows" ) {
             // Layout widgets in rows
-            // FIXME: Be able to handle rows that are themselves more than one line!
-            // Could this be done in the layout() function somehow (by returning newlines?)
             int row_num = 0;
             for( const widget_id &row_wid : wgt->_widgets ) {
                 widget row_widget = row_wid.obj();
+
                 const std::string txt = row_widget.layout( u, widt, wgt->_label_width );
-                row_num = widget::custom_draw_multiline( txt, w, margin, widt, row_num );
+                if( row_wid->has_flag( json_flag_W_DISABLED_WHEN_EMPTY ) && txt.empty() ) {
+                    // reclaim the skipped height in the sidebar
+                    height_diff -= row_widget._height;
+                } else {
+                    // draw normally
+                    row_num = widget::custom_draw_multiline( txt, w, margin, widt, row_num );
+                }
             }
         } else {
             // Layout widgets in columns
             // For now, this is the default when calling layout()
             // So, just layout self on a single line
-            widget::custom_draw_multiline( wgt->layout( u, widt ), w, margin, widt, 0 );
+
+            const std::string txt = wgt->layout( u, widt );
+            if( disable_empty && txt.empty() ) {
+                // reclaim the skipped height in the sidebar
+                height_diff -= wgt->_height;
+            } else {
+                // draw normally
+                widget::custom_draw_multiline( txt, w, margin, widt, 0 );
+            }
         }
     } else {
         // No layout, just a widget
-        widget::custom_draw_multiline( wgt->layout( u, widt ), w, margin, widt, 0 );
+        const std::string txt = wgt->layout( u, widt );
+        if( disable_empty && txt.empty() ) {
+            // reclaim the skipped height in the sidebar
+            height_diff -= wgt->_height;
+        } else {
+            // draw normally
+            widget::custom_draw_multiline( txt, w, margin, widt, 0 );
+        }
     }
     wnoutrefresh( w );
+
+    return height_diff;
 }
 
 window_panel widget::get_window_panel( const int width, const int req_height )
@@ -795,9 +861,10 @@ window_panel widget::get_window_panel( const int width, const int req_height )
     // Minimap and log do not have a predetermined height
     // (or they should allow caller to customize height)
 
-    window_panel win( custom_draw_func, _label.translated(), _label, height, width,
-                      !has_flag( json_flag_W_DISABLED ) );
+    window_panel win( _label.translated(), _label, height, width,
+                      !has_flag( json_flag_W_DISABLED_BY_DEFAULT ) );
     win.set_widget( this->id );
+    win.set_draw_func( custom_draw_func );
     return win;
 }
 
@@ -805,14 +872,12 @@ bool widget::uses_text_function()
 {
     switch( _var ) {
         case widget_var::activity_text:
-        case widget_var::body_temp_text:
+        case widget_var::body_graph:
         case widget_var::bp_armor_outer_text:
         case widget_var::compass_text:
         case widget_var::compass_legend_text:
         case widget_var::date_text:
         case widget_var::env_temp_text:
-        case widget_var::fatigue_text:
-        case widget_var::health_text:
         case widget_var::mood_text:
         case widget_var::move_count_mode_text:
         case widget_var::pain_text:
@@ -868,11 +933,14 @@ std::string widget::color_text_function_string( const avatar &ava, unsigned int 
         case widget_var::activity_text:
             desc = display::activity_text_color( ava );
             break;
-        case widget_var::body_temp_text:
-            desc = display::temp_text_color( ava );
+        case widget_var::body_graph:
+            desc.first = display::colorized_bodygraph_text( ava, "full_body_widget",
+                         _width == 0 ? max_width : _width, _height_max, _height );
+            update_height = true; // Dynamically adjusted height
+            apply_color = false; // Already colorized
             break;
         case widget_var::bp_armor_outer_text:
-            desc.first = display::colorized_bodypart_outer_armor( ava, only_bp() );
+            desc.first = ava.worn.get_armor_display( only_bp() );
             apply_color = false; // Item name already colorized by tname
             break;
         case widget_var::date_text:
@@ -880,12 +948,6 @@ std::string widget::color_text_function_string( const avatar &ava, unsigned int 
             break;
         case widget_var::env_temp_text:
             desc.first = display::get_temp( ava );
-            break;
-        case widget_var::fatigue_text:
-            desc = display::fatigue_text_color( ava );
-            break;
-        case widget_var::health_text:
-            desc = display::health_text_color( ava );
             break;
         case widget_var::mood_text:
             desc = display::morale_face_color( ava );
@@ -904,7 +966,7 @@ std::string widget::color_text_function_string( const avatar &ava, unsigned int 
             apply_color = false;
             break;
         case widget_var::place_text:
-            desc.first = overmap_buffer.ter( ava.global_omt_location() )->get_name();
+            desc.first = display::current_position_text( ava.global_omt_location() );
             break;
         case widget_var::power_text:
             desc = display::power_text_color( ava );
@@ -1259,7 +1321,8 @@ std::string widget::graph( int value ) const
 
 // For widget::layout, process each row to append to the layout string
 static std::string append_line( const std::string &line, bool first_row, int max_width,
-                                const translation &label, int label_width, widget_alignment text_align,
+                                const translation &label, int label_width, const std::string &_separator,
+                                widget_alignment text_align,
                                 widget_alignment label_align )
 {
     // utf8_width subtracts 1 for each newline; add it back for multiline widgets
@@ -1271,12 +1334,12 @@ static std::string append_line( const std::string &line, bool first_row, int max
     if( first_row && !label.empty() ) {
         lbl = label.translated();
         lbl_w = utf8_width( lbl, true );
-        lbl.append( ": " );
+        lbl.append( _separator );
     }
     // Don't process label width if label_width = 0 for empty labels
     if( label_width > 0 || !label.empty() ) {
-        lbl_w += 2;
-        label_width += 2;
+        lbl_w += _separator.length();
+        label_width += _separator.length();
         // Use empty spaces in place of label if none exist
         if( label.empty() ) {
             lbl.append( label_width, ' ' );
@@ -1360,36 +1423,84 @@ std::string widget::layout( const avatar &ava, const unsigned int max_width, int
 {
     std::string ret;
     if( _style == "layout" ) {
-        // Widgets with "rows" arrangement must be laid out from window_panel
         if( _arrange == "rows" ) {
-            debugmsg( "widget layout called with rows" );
-        }
-        const int num_widgets = _widgets.size();
-        if( num_widgets == 0 ) {
-            debugmsg( "widget layout has no widgets" );
-        }
-        // Number of spaces between columns
-        const int col_padding = 2;
-        // Subtract column padding to get space available for widgets
-        const int avail_width = max_width - col_padding * ( num_widgets - 1 );
-        // Divide available width equally among all widgets
-        const int child_width = avail_width / num_widgets;
-        // Keep remainder to distribute
-        int remainder = avail_width % num_widgets;
-        for( const widget_id &wid : _widgets ) {
-            widget cur_child = wid.obj();
-            int cur_width = child_width;
-            // Spread remainder over the first few columns
-            if( remainder > 0 ) {
-                cur_width += 1;
-                remainder -= 1;
+            std::string sep;
+            int h = 0;
+            // Stack rows vertically into a multiline widget
+            for( const widget_id &wid : _widgets ) {
+                widget cur_child = wid.obj();
+                ret += sep + cur_child.layout( ava, max_width, label_width );
+                sep = "\n";
+                h += wid->_height < 0 ? 0 : wid->_height;
             }
-            // Layout child in this column
-            ret += string_format( "%s", cur_child.layout( ava, cur_width, label_width ) );
-            // Add column padding until we reach the last column
-            if( wid != _widgets.back() ) {
-                ret += std::string( col_padding, ' ' );
+            // Set height for the final layout
+            set_height_for_widget( id, h );
+        } else { // columns
+            const int num_widgets = _widgets.size();
+            if( num_widgets == 0 ) {
+                debugmsg( "widget layout has no widgets" );
             }
+            // Number of spaces between columns
+            const int col_padding = 2;
+            // Subtract column padding to get space available for widgets
+            const int avail_width = max_width - col_padding * ( num_widgets - 1 );
+            // Divide available width equally among all widgets
+            const int child_width = avail_width / num_widgets;
+            // Keep remainder to distribute
+            int remainder = avail_width % num_widgets;
+            // Store the (potentially) multi-row text for each column
+            std::vector<std::vector<std::string>> cols;
+            std::vector<int> widths;
+            int total_width = 0;
+            for( const widget_id &wid : _widgets ) {
+                widget cur_child = wid.obj();
+                int cur_width = child_width;
+                if( cur_child._style == "layout" && cur_child._width > 1 ) {
+                    cur_width = cur_child._width;
+                }
+                // Spread remainder over the first few columns
+                if( remainder > 0 ) {
+                    cur_width += 1;
+                    remainder -= 1;
+                }
+                total_width += cur_width;
+                if( total_width > avail_width ) {
+                    debugmsg( "widget layout is wider than sidebar allows." );
+                }
+                // Layout child in this column
+                const std::string txt = cur_child.layout( ava, cur_width, label_width );
+                // Store the resulting text for this column
+                cols.emplace_back( foldstring( txt, cur_width ) );
+                widths.emplace_back( cur_width );
+            }
+            int h_max = 0;
+            std::string sep;
+            // Line up each row of each column to form the whole multi-line layout
+            for( size_t r = 0; ; r++ ) {
+                bool any_val = false;
+                std::string line;
+                for( size_t c = 0; c < cols.size(); c++ ) {
+                    if( r >= cols[c].size() ) {
+                        // No row r for this column, pad with empty space
+                        line += std::string( widths[c], ' ' );
+                    } else {
+                        any_val = true;
+                        line += cols[c][r];
+                    }
+                    if( c + 1 < cols.size() ) {
+                        // Add padding between columns
+                        line += std::string( col_padding, ' ' );
+                    }
+                }
+                if( !any_val ) {
+                    break;
+                }
+                ret += sep + line;
+                sep = "\n";
+                h_max++;
+            }
+            // Set height for the final layout
+            set_height_for_widget( id, h_max );
         }
     } else {
         // Get displayed value (colorized)
@@ -1398,6 +1509,11 @@ std::string widget::layout( const avatar &ava, const unsigned int max_width, int
         if( shown.empty() && has_flag( json_flag_W_DYNAMIC_HEIGHT ) ) {
             _height = 0;
         }
+        // Let the calling func know that this widget should be skipped for rendering
+        if( has_flag( json_flag_W_DISABLED_WHEN_EMPTY ) &&
+            string_empty_or_whitespace( remove_color_tags( shown ) ) ) {
+            return "";
+        }
         size_t strpos = 0;
         int row_num = 0;
         // For multi-line widgets, each line is separated by a '\n' character
@@ -1405,7 +1521,7 @@ std::string widget::layout( const avatar &ava, const unsigned int max_width, int
             // Process line, including '\n'
             ret += append_line( shown.substr( 0, strpos + 1 ), row_num == 0, max_width,
                                 has_flag( json_flag_W_LABEL_NONE ) ? translation() : _label,
-                                0, _text_align, _label_align );
+                                0, _separator, _text_align, _label_align );
             // Delete used token
             shown.erase( 0, strpos + 1 );
             row_num++;
@@ -1414,7 +1530,7 @@ std::string widget::layout( const avatar &ava, const unsigned int max_width, int
             // Process last line, or first for single-line widgets
             ret += append_line( shown, row_num == 0, max_width,
                                 has_flag( json_flag_W_LABEL_NONE ) ? translation() : _label,
-                                row_num == 0 ? label_width : 0, _text_align, _label_align );
+                                row_num == 0 ? label_width : 0, _separator, _text_align, _label_align );
         }
     }
     return ret.find( '\n' ) != std::string::npos || max_width == 0 ?

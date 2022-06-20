@@ -20,6 +20,7 @@
 namespace cata_curses_test
 {
 #define NCURSES_NOMACROS
+#define NCURSES_WIDECHAR 1
 #if defined(__CYGWIN__)
 #include <ncurses/curses.h>
 #else
@@ -49,6 +50,7 @@ static const efftype_id effect_hunger_very_hungry( "hunger_very_hungry" );
 static const efftype_id effect_infected( "infected" );
 
 static const flag_id json_flag_SPLINT( "SPLINT" );
+const static flag_id json_flag_W_DISABLED_WHEN_EMPTY( "W_DISABLED_WHEN_EMPTY" );
 
 static const itype_id itype_blindfold( "blindfold" );
 static const itype_id itype_ear_plugs( "ear_plugs" );
@@ -74,6 +76,9 @@ static const widget_id widget_test_2_column_layout( "test_2_column_layout" );
 static const widget_id widget_test_3_column_layout( "test_3_column_layout" );
 static const widget_id widget_test_4_column_layout( "test_4_column_layout" );
 static const widget_id widget_test_activity_clauses( "test_activity_clauses" );
+static const widget_id widget_test_body_temp_clause( "test_body_temp_clause" );
+static const widget_id widget_test_body_temp_delta_sym( "test_body_temp_delta_sym" );
+static const widget_id widget_test_body_temp_delta_text( "test_body_temp_delta_text" );
 static const widget_id widget_test_bp_wetness_head_num( "test_bp_wetness_head_num" );
 static const widget_id widget_test_bp_wetness_torso_num( "test_bp_wetness_torso_num" );
 static const widget_id widget_test_bucket_graph( "test_bucket_graph" );
@@ -91,12 +96,17 @@ static const widget_id widget_test_compass_legend_1( "test_compass_legend_1" );
 static const widget_id widget_test_compass_legend_3( "test_compass_legend_3" );
 static const widget_id widget_test_compass_legend_5( "test_compass_legend_5" );
 static const widget_id widget_test_dex_color_num( "test_dex_color_num" );
+static const widget_id widget_test_disabled_when_empty( "test_disabled_when_empty" );
+static const widget_id widget_test_fatigue_clause( "test_fatigue_clause" );
 static const widget_id widget_test_focus_num( "test_focus_num" );
+static const widget_id widget_test_health_clause( "test_health_clause" );
 static const widget_id widget_test_health_color_num( "test_health_color_num" );
 static const widget_id widget_test_hp_head_graph( "test_hp_head_graph" );
 static const widget_id widget_test_hp_head_num( "test_hp_head_num" );
 static const widget_id widget_test_hunger_clause( "test_hunger_clause" );
 static const widget_id widget_test_int_color_num( "test_int_color_num" );
+static const widget_id widget_test_layout_cols_in_cols( "test_layout_cols_in_cols" );
+static const widget_id widget_test_layout_rows_in_columns( "test_layout_rows_in_columns" );
 static const widget_id widget_test_lighting_clause( "test_lighting_clause" );
 static const widget_id widget_test_mana_num( "test_mana_num" );
 static const widget_id widget_test_moon_phase_clause( "test_moon_phase_clause" );
@@ -456,23 +466,104 @@ TEST_CASE( "widgets showing avatar stats with color for normal value", "[widget]
     }
 }
 
-TEST_CASE( "widgets showing avatar health with color for normal value", "[widget][health][color]" )
+TEST_CASE( "widget showing character fatigue status", "[widget]" )
 {
-    widget health_w = widget_test_health_color_num.obj();
+    widget fatigue_w = widget_test_fatigue_clause.obj();
 
     avatar &ava = get_avatar();
     clear_avatar();
 
-    ava.set_healthy( -200 );
+    ava.set_fatigue( 0 );
+    CHECK( fatigue_w.layout( ava ) == "Rest: " );
+    ava.set_fatigue( 192 );
+    CHECK( fatigue_w.layout( ava ) == "Rest: <color_c_yellow>Tired</color>" );
+    ava.set_fatigue( 384 );
+    CHECK( fatigue_w.layout( ava ) == "Rest: <color_c_light_red>Dead Tired</color>" );
+    ava.set_fatigue( 576 );
+    CHECK( fatigue_w.layout( ava ) == "Rest: <color_c_red>Exhausted</color>" );
+}
+
+TEST_CASE( "widgets showing avatar health with color for normal value", "[widget][health][color]" )
+{
+    widget health_w = widget_test_health_color_num.obj();
+    widget health_clause_w = widget_test_health_clause.obj();
+
+    avatar &ava = get_avatar();
+    clear_avatar();
+
+    ava.set_lifestyle( -200 );
     CHECK( health_w.layout( ava ) == "Health: <color_c_red>-200</color>" );
-    ava.set_healthy( -100 );
-    CHECK( health_w.layout( ava ) == "Health: <color_c_light_red>-100</color>" );
-    ava.set_healthy( 0 );
+    CHECK( health_clause_w.layout( ava ) == "Health: <color_c_red>Horrible</color>" );
+    ava.set_lifestyle( -99 );
+    CHECK( health_w.layout( ava ) == "Health: <color_c_light_red>-99</color>" );
+    CHECK( health_clause_w.layout( ava ) == "Health: <color_c_light_red>Very bad</color>" );
+    ava.set_lifestyle( -49 );
+    CHECK( health_w.layout( ava ) == "Health: <color_c_light_red>-49</color>" );
+    CHECK( health_clause_w.layout( ava ) == "Health: <color_c_yellow>Bad</color>" );
+    ava.set_lifestyle( 0 );
     CHECK( health_w.layout( ava ) == "Health: <color_c_white>0</color>" );
-    ava.set_healthy( 100 );
-    CHECK( health_w.layout( ava ) == "Health: <color_c_light_green>100</color>" );
-    ava.set_healthy( 200 );
+    CHECK( health_clause_w.layout( ava ) == "Health: <color_c_light_gray>OK</color>" );
+    ava.set_lifestyle( 49 );
+    CHECK( health_w.layout( ava ) == "Health: <color_c_light_green>49</color>" );
+    CHECK( health_clause_w.layout( ava ) == "Health: <color_c_white>Good</color>" );
+    ava.set_lifestyle( 99 );
+    CHECK( health_w.layout( ava ) == "Health: <color_c_light_green>99</color>" );
+    CHECK( health_clause_w.layout( ava ) == "Health: <color_c_green>Very good</color>" );
+    ava.set_lifestyle( 200 );
     CHECK( health_w.layout( ava ) == "Health: <color_c_green>200</color>" );
+    CHECK( health_clause_w.layout( ava ) == "Health: <color_c_light_green>Excellent</color>" );
+}
+
+TEST_CASE( "widgets showing body temperature and delta", "[widget]" )
+{
+    widget w_temp = widget_test_body_temp_clause.obj();
+    widget w_dtxt = widget_test_body_temp_delta_text.obj();
+    widget w_dsym = widget_test_body_temp_delta_sym.obj();
+
+    avatar &ava = get_avatar();
+    clear_avatar();
+
+    ava.set_all_parts_temp_cur( 499 );
+    ava.set_all_parts_temp_conv( 5000 );
+    CHECK( w_temp.layout( ava ) == "Heat: <color_c_blue>Freezing!</color>" );
+    CHECK( w_dtxt.layout( ava ) == "Temp change: <color_c_red>(Rising!!)</color>" );
+    CHECK( w_dsym.layout( ava ) == "Temp change: <color_c_red>↑↑↑</color>" );
+
+    ava.set_all_parts_temp_cur( 1999 );
+    ava.set_all_parts_temp_conv( 5000 );
+    CHECK( w_temp.layout( ava ) == "Heat: <color_c_cyan>Very cold!</color>" );
+    CHECK( w_dtxt.layout( ava ) == "Temp change: <color_c_light_red>(Rising!)</color>" );
+    CHECK( w_dsym.layout( ava ) == "Temp change: <color_c_light_red>↑↑</color>" );
+
+    ava.set_all_parts_temp_cur( 3499 );
+    ava.set_all_parts_temp_conv( 5000 );
+    CHECK( w_temp.layout( ava ) == "Heat: <color_c_light_blue>Chilly</color>" );
+    CHECK( w_dtxt.layout( ava ) == "Temp change: <color_c_yellow>(Rising)</color>" );
+    CHECK( w_dsym.layout( ava ) == "Temp change: <color_c_yellow>↑</color>" );
+
+    ava.set_all_parts_temp_cur( 5000 );
+    ava.set_all_parts_temp_conv( 5000 );
+    CHECK( w_temp.layout( ava ) == "Heat: <color_c_green>Comfortable</color>" );
+    CHECK( w_dtxt.layout( ava ) == "Temp change: " );
+    CHECK( w_dsym.layout( ava ) == "Temp change: <color_c_green>-</color>" );
+
+    ava.set_all_parts_temp_cur( 6501 );
+    ava.set_all_parts_temp_conv( 5000 );
+    CHECK( w_temp.layout( ava ) == "Heat: <color_c_yellow>warm</color>" );
+    CHECK( w_dtxt.layout( ava ) == "Temp change: <color_c_light_blue>(Falling)</color>" );
+    CHECK( w_dsym.layout( ava ) == "Temp change: <color_c_light_blue>↓</color>" );
+
+    ava.set_all_parts_temp_cur( 8001 );
+    ava.set_all_parts_temp_conv( 5000 );
+    CHECK( w_temp.layout( ava ) == "Heat: <color_c_light_red>Very hot!</color>" );
+    CHECK( w_dtxt.layout( ava ) == "Temp change: <color_c_cyan>(Falling!)</color>" );
+    CHECK( w_dsym.layout( ava ) == "Temp change: <color_c_cyan>↓↓</color>" );
+
+    ava.set_all_parts_temp_cur( 9501 );
+    ava.set_all_parts_temp_conv( 5000 );
+    CHECK( w_temp.layout( ava ) == "Heat: <color_c_red>Scorching!</color>" );
+    CHECK( w_dtxt.layout( ava ) == "Temp change: <color_c_blue>(Falling!!)</color>" );
+    CHECK( w_dsym.layout( ava ) == "Temp change: <color_c_blue>↓↓↓</color>" );
 }
 
 TEST_CASE( "widgets showing avatar stamina", "[widget][avatar][stamina]" )
@@ -667,8 +758,8 @@ TEST_CASE( "widgets showing avatar attributes", "[widget][avatar]" )
         CHECK( head_wetness_w.layout( ava ) == "HEAD WET: 0" );
         CHECK( torso_wetness_w.layout( ava ) == "TORSO WET: 0" );
         ava.drench( 100, { body_part_head, body_part_torso }, false );
-        CHECK( head_wetness_w.layout( ava ) == "HEAD WET: 2" );
-        CHECK( torso_wetness_w.layout( ava ) == "TORSO WET: 2" );
+        CHECK( head_wetness_w.layout( ava ) == "HEAD WET: 200" );
+        CHECK( torso_wetness_w.layout( ava ) == "TORSO WET: 200" );
     }
 }
 
@@ -1106,17 +1197,17 @@ TEST_CASE( "outer armor widget", "[widget][armor]" )
     CHECK( torso_armor_w.layout( ava ) == "Torso Armor: -" );
 
     // Wearing something covering torso
-    ava.worn.emplace_back( "test_zentai" );
+    ava.worn.wear_item( ava, item( "test_zentai" ), false, false );
     CHECK( torso_armor_w.layout( ava ) ==
            "Torso Armor: <color_c_light_green>||</color>\u00A0test zentai (poor fit)" );
 
     // Wearing socks doesn't affect the torso
-    ava.worn.emplace_back( "test_socks" );
+    ava.worn.wear_item( ava, item( "test_socks" ), false, false );
     CHECK( torso_armor_w.layout( ava ) ==
            "Torso Armor: <color_c_light_green>||</color>\u00A0test zentai (poor fit)" );
 
     // Wearing something else on the torso
-    ava.worn.emplace_back( "test_hazmat_suit" );
+    ava.worn.wear_item( ava, item( "test_hazmat_suit" ), false, false );
     CHECK( torso_armor_w.layout( ava ) ==
            "Torso Armor: <color_c_light_green>||</color>\u00A0TEST hazmat suit (poor fit)" );
 }
@@ -1132,8 +1223,8 @@ TEST_CASE( "radiation badge widget", "[widget][radiation]" )
     CHECK( rads_w.layout( ava ) == "RADIATION: <color_c_light_gray>Unknown</color>" );
 
     // Acquire and wear a radiation badge
-    item &rad_badge = ava.i_add( item( itype_rad_badge ) );
-    ava.worn.emplace_back( rad_badge );
+    item_location rad_badge = ava.i_add( item( itype_rad_badge ) );
+    ava.worn.wear_item( ava, *rad_badge, false, false );
 
     // Color indicator is shown when character has radiation badge
     ava.set_rad( 0 );
@@ -1314,11 +1405,11 @@ TEST_CASE( "compass widget", "[widget][compass]" )
                "<color_c_white>S</color> <color_c_dark_gray>shearable monster</color>                 " );
         CHECK( c5s_legend3.layout( ava, sidebar_width ) ==
                "<color_c_white>S</color> <color_c_dark_gray>shearable monster</color>\n"
-               "<color_c_white>B</color> <color_c_dark_gray>monster producing bovine samples when dissected</color>\n"
+               "<color_c_white>B</color> <color_c_dark_gray>monster producing cattle samples when dissected</color>\n"
                "<color_c_white>B</color> <color_c_dark_gray>monster producing CBMs when dissected</color>" );
         CHECK( c5s_legend5.layout( ava, sidebar_width ) ==
                "<color_c_white>S</color> <color_c_dark_gray>shearable monster</color>\n"
-               "<color_c_white>B</color> <color_c_dark_gray>monster producing bovine samples when dissected</color>\n"
+               "<color_c_white>B</color> <color_c_dark_gray>monster producing cattle samples when dissected</color>\n"
                "<color_c_white>B</color> <color_c_dark_gray>monster producing CBMs when dissected</color>\n" );
     }
 }
@@ -1671,7 +1762,7 @@ TEST_CASE( "Dynamic height for multiline widgets", "[widget]" )
         REQUIRE( ava.get_mon_visible().unique_mons[static_cast<int>( cardinal_direction::NORTH )].size() ==
                  2 );
         CHECK( c5s_legend3.layout( ava, sidebar_width ) ==
-               "<color_c_white>B</color> <color_c_dark_gray>monster producing bovine samples when dissected</color>\n"
+               "<color_c_white>B</color> <color_c_dark_gray>monster producing cattle samples when dissected</color>\n"
                "<color_c_white>B</color> <color_c_dark_gray>monster producing CBMs when dissected</color>\n" );
         CHECK( get_height_from_widget_factory( c5s_legend3.getId() ) == 2 );
     }
@@ -1691,7 +1782,7 @@ TEST_CASE( "Dynamic height for multiline widgets", "[widget]" )
                  3 );
         CHECK( c5s_legend3.layout( ava, sidebar_width ) ==
                "<color_c_white>S</color> <color_c_dark_gray>shearable monster</color>\n"
-               "<color_c_white>B</color> <color_c_dark_gray>monster producing bovine samples when dissected</color>\n"
+               "<color_c_white>B</color> <color_c_dark_gray>monster producing cattle samples when dissected</color>\n"
                "<color_c_white>B</color> <color_c_dark_gray>monster producing CBMs when dissected</color>" );
         CHECK( get_height_from_widget_factory( c5s_legend3.getId() ) == 3 );
     }
@@ -2136,5 +2227,138 @@ TEST_CASE( "Clause conditions - pure JSON widgets", "[widget][clause][condition]
                "Symbol Values: <color_c_red_red><</color><color_i_yellow>-</color><color_c_yellow>=</color><color_c_white_green>+</color><color_c_light_green>></color>" );
         CHECK( w_lgd.layout( ava, sidebar_width ) ==
                "<color_c_red_red><</color> blind  <color_i_yellow>-</color> deaf\n<color_c_yellow>=</color> daylight\n<color_c_white_green>+</color> good hearing\n<color_c_light_green>></color> good vision\n" );
+    }
+}
+
+TEST_CASE( "widget disabled when empty", "[widget]" )
+{
+    item blindfold( "blindfold" );
+    avatar &ava = get_avatar();
+    clear_avatar();
+
+    widget wgt = widget_test_disabled_when_empty.obj();
+    REQUIRE( wgt.has_flag( json_flag_W_DISABLED_WHEN_EMPTY ) );
+
+    SECTION( "test layout results" ) {
+        // Show widget text when character is not blind
+        REQUIRE( !ava.is_blind() );
+        CHECK( wgt.layout( ava ) == "NOT EMPTY: <color_c_yellow>Text exists</color>" );
+
+        // Hide the widget when character is blind.
+        // The empty string indicates to the calling function
+        // that the widget should not be rendered
+        // (combined with the W_DISABLED_WHEN_EMPTY flag).
+        ava.wear_item( blindfold );
+        REQUIRE( ava.is_blind() );
+        CHECK( wgt.layout( ava ).empty() );
+    }
+
+    SECTION( "test widget rendering when disabled" ) {
+#if !(defined(TILES) || defined(_WIN32))
+        // Running the tests in a developer environment works fine, but
+        // the CI env has no interactive shell, so we skip the screen scraping.
+        const char *term_env = ::getenv( "TERM" );
+        // The tests don't initialize the curses window, so initialize it here...
+        if( term_env != nullptr && std::string( term_env ) != "unknown" &&
+            cata_curses_test::initscr() != nullptr ) {
+#endif
+            const int cols = 32;
+            const int rows = 5;
+
+            catacurses::window w = catacurses::newwin( rows, cols, point_zero );
+
+            werase( w );
+            SECTION( "Not empty" ) {
+                // Show widget text when character is not blind
+                REQUIRE( !ava.is_blind() );
+                CHECK( widget::custom_draw_multiline( wgt.layout( ava ), w, 1, 30, 0 ) == 1 );
+                std::vector<std::string> lines = scrape_win_at( w, point_zero, cols, rows );
+                CHECK( lines[0] == " NOT EMPTY: Text exists         " );
+                CHECK( lines[1] == "                                " );
+                CHECK( lines[2] == "                                " );
+                CHECK( lines[3] == "                                " );
+                CHECK( lines[4] == "                                " );
+            }
+
+            werase( w );
+            SECTION( "Empty" ) {
+                // Hide the widget when character is blind.
+                ava.wear_item( blindfold );
+                REQUIRE( ava.is_blind() );
+                // Shouldn't be called (height should be decremented), but check it just in case
+                CHECK( widget::custom_draw_multiline( wgt.layout( ava ), w, 1, 30, 0 ) == 1 );
+                std::vector<std::string> lines = scrape_win_at( w, point_zero, cols, rows );
+                CHECK( lines[0] == "                                " );
+                CHECK( lines[1] == "                                " );
+                CHECK( lines[2] == "                                " );
+                CHECK( lines[3] == "                                " );
+                CHECK( lines[4] == "                                " );
+            }
+
+#if !(defined(TILES) || defined(_WIN32))
+            // ... and free it here
+            cata_curses_test::endwin();
+        }
+#endif
+    }
+}
+
+TEST_CASE( "widget rows in columns", "[widget]" )
+{
+    avatar &ava = get_avatar();
+    clear_avatar();
+    clear_map();
+    // Setup overmap
+    fill_overmap_area( ava, oter_id( "field" ) );
+    ava.reset_all_missions();
+    ava.set_focus( 100 );
+    ava.movecounter = 0;
+
+    REQUIRE( ava.movecounter == 0 );
+    REQUIRE( ava.get_focus() == 100 );
+    REQUIRE( ava.get_speed() == 100 );
+
+    SECTION( "3 columns, multiline/rows/rows" ) {
+        const std::string brown_dot = "<color_c_brown>.</color>";
+        const std::string h_brown_dot = "<color_h_brown>.</color>";
+        const std::string expected = join( {
+            brown_dot, brown_dot, brown_dot, "  MOVE: 0     STR: 8    \n",
+            brown_dot, h_brown_dot, brown_dot, "  SPEED: 100  DEX: 8    \n",
+            brown_dot, brown_dot, brown_dot, "  FOCUS: 100  INT: 8    \n",
+            "            MANA: 1000  PER: 8    "
+        }, "" );
+        widget wgt = widget_test_layout_rows_in_columns.obj();
+        CHECK( wgt.layout( ava, 34 ) == expected );
+    }
+
+    SECTION( "3 columns nested in 2 columns, rows/columns, multiline/rows/rows" ) {
+        const std::string brown_dot = "<color_c_brown>.</color>";
+        const std::string h_brown_dot = "<color_h_brown>.</color>";
+        const std::string expected = join( {
+            join( {
+                "CLAUSE: Zero                       ",
+                brown_dot,
+                brown_dot,
+                brown_dot,
+                "  MOVE: 0     STR: 8   \n"
+            }, "" ),
+            join( {
+                "POOL: 0000                         ",
+                brown_dot,
+                h_brown_dot,
+                brown_dot,
+                "  SPEED: 100  DEX: 8   \n"
+            }, "" ),
+            join( {
+                "NUM: 0                             ",
+                brown_dot,
+                brown_dot,
+                brown_dot,
+                "  FOCUS: 100  INT: 8   \n"
+            }, "" ),
+            "                                               MANA: 1000  PER: 8   "
+        }, "" );
+        widget wgt = widget_test_layout_cols_in_cols.obj();
+        CHECK( wgt.layout( ava, 68 ) == expected );
     }
 }

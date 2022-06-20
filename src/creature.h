@@ -214,6 +214,7 @@ enum class get_body_part_flags : int {
     none = 0,
     only_main = 1 << 0,
     sorted = 1 << 1,
+    primary_type = 1 << 2,
 };
 
 template<>
@@ -484,7 +485,7 @@ class Creature : public viewer
          * @param name Name of the implement used to pull the target.
          * @param p Position of the target creature.
         */
-        void longpull( const std::string name, const tripoint &p );
+        void longpull( std::string name, const tripoint &p );
 
         /**
          * This creature just dodged an attack - possibly special/ranged attack - from source.
@@ -680,6 +681,7 @@ class Creature : public viewer
         virtual int get_armor_bash_bonus() const;
         virtual int get_armor_cut_bonus() const;
         virtual int get_armor_bullet_bonus() const;
+        virtual int get_spell_resist() const;
 
         virtual int get_armor_type( damage_type dt, bodypart_id bp ) const = 0;
 
